@@ -1,65 +1,23 @@
-<!DOCTYPE html><html lang="zh-Hant">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>前往綠界付款</title>
-<link rel="stylesheet" href="/public/redirect.css">
-<script>
-function decodeParams(){
-  const q=new URLSearchParams(location.search);
-  const enc=q.get('p'); if(!enc) return null;
-  try{return JSON.parse(atob(decodeURIComponent(enc)));}catch(_){return null;}
-}
-async function sha256(s){
-  const h=await crypto.subtle.digest("SHA-256",new TextEncoder().encode(s));
-  return Array.from(new Uint8Array(h)).map(x=>x.toString(16).padStart(2,"0")).join("");
-}
-async function makeMac(o,k,i){
-  const raw="HashKey="+k+Object.keys(o).sort().map(k=>"&"+k+"="+o[k]).join("")+"&HashIV="+i;
-  const enc=encodeURIComponent(raw).toLowerCase()
-    .replace(/%2d/g,'-').replace(/%5f/g,'_').replace(/%2e/g,'.')
-    .replace(/%21/g,'!').replace(/%2a/g,'*').replace(/%28/g,'(')
-    .replace(/%29/g,')').replace(/%20/g,'+');
-  return (await sha256(enc)).toUpperCase();
-}
-</script>
-</head>
-<body>
-<div class="card">
-  <h1>前往綠界金流付款頁面</h1>
-  <p id="msg">系統自動導向付款頁面，請稍候…</p>
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>前往綠界付款</title>
 
-  <form id="pay" method="post"
-        action="https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"
-        style="display:none"></form>
+    <!-- one tiny stylesheet for the “card” look -->
+    <link rel="stylesheet" href="redirect.css" />
+  </head>
 
-  <button id="manual" style="display:none"
-          onclick="document.getElementById('pay').submit()">手動前往付款</button>
-</div>
+  <body>
+    <!-- card UI — the contents will be replaced by ecpay.js -->
+    <div class="card" id="box">
+      <h1>前往綠界金流付款頁面</h1>
+      <p>請點按鈕完成付款</p>
+      <button id="go" hidden>前往付款</button>
+    </div>
 
-<script>(async()=>{
-  const d=decodeParams();
-  if(!d){document.getElementById('msg').textContent='付款參數缺失';return;}
-
-  const p={
-    MerchantID:d.cfg.merchantId, MerchantTradeNo:d.tno,
-    MerchantTradeDate:new Date().toISOString().slice(0,19).replace('T',' ').replace(/-/g,'/'),
-    PaymentType:"aio", TotalAmount:d.amt, TradeDesc:"商品訂單", ItemName:"課程",
-    ReturnURL:"https://www.sooooz.com/_functions/updateECPayTransaction",
-    ClientBackURL:"https://www.sooooz.com/",  /* adjust if you like */
-    OrderResultURL:"https://www.sooooz.com/_functions/paymentResult",
-    ChoosePayment:"ALL", EncryptType:"1",
-    CustomField1:d.cfg.wixTransactionId, CustomField2:d.cfg.orderId
-  };
-  p.CheckMacValue=await makeMac(p,d.cfg.hashKey,d.cfg.hashIv);
-
-  const f=document.getElementById('pay');
-  Object.entries(p).forEach(([k,v])=>
-    f.insertAdjacentHTML('beforeend',`<input type="hidden" name="${k}" value="${v}">`));
-
-  try{f.submit();}catch(e){
-    document.getElementById('manual').style.display='block';
-    document.getElementById('msg').textContent='請點按鈕完成付款';
-  }
-})();</script>
-</body></html>
+    <!-- single external script (no inline JS → GitHub CSP-safe) -->
+    <script src="ecpay.js"></script>
+  </body>
+</html>
