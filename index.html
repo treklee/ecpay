@@ -1,23 +1,79 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-Hant">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>前往綠界付款</title>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>前往綠界付款</title>
+  <link rel="stylesheet" href="redirect.css">
+</head>
+<body>
+  <form id="pay" class="card" method="post"
+        action="https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5">
+    <h1>前往綠界金流付款頁面</h1>
+    <p>請點按鈕完成付款</p>
+    <!-- hidden inputs injected by the script below -->
+    <button type="submit">前往付款</button>
+  </form>
 
-    <!-- one tiny stylesheet for the “card” look -->
-    <link rel="stylesheet" href="redirect.css" />
-  </head>
+  <script>
+    /* decode ?p=...  */
+    const qp   = new URLSearchParams(location.search);
+    const enc  = qp.get('p') || '';
+    const json = JSON.parse(atob(decodeURIComponent(enc)));
 
-  <body>
-    <!-- card UI — the contents will be replaced by ecpay.js -->
-    <div class="card" id="box">
-      <h1>前往綠界金流付款頁面</h1>
-      <p>請點按鈕完成付款</p>
-      <button id="go" hidden>前往付款</button>
-    </div>
+    /* 🔵  ▶▶  browser-side debug  ◀◀ */
+    console.log('[GitHub page] decoded payload:', json);
 
-    <!-- single external script (no inline JS → GitHub CSP-safe) -->
-    <script src="ecpay.js"></script>
-  </body>
+    /* build inputs */
+    const p = {
+      MerchantID       : json.cfg.merchantId,
+      MerchantTradeNo  : json.tno,
+      MerchantTradeDate: new Date().toISOString().slice(0,19).replace('T',' '),
+      PaymentType      : 'aio',
+      TotalAmount      : json.amt,
+      TradeDesc        : '商品訂單',
+      ItemName         : '課程',
+      ReturnURL        : 'https://www.sooooz.com/_functions/updateECPayTransaction',
+      ClientBackURL    : 'https://www.sooooz.com/',
+      OrderResultURL   : 'https://www.sooooz.com/_functions/paymentResult',
+      ChoosePayment    : 'ALL',
+      EncryptType      : '1',
+      CustomField1     : json.cfg.wixTransactionId,
+      CustomField2     : json.cfg.orderId,
+      CheckMacValue    : ''          /* filled next */
+    };
+
+    /* tiny SHA-256 helper, uses SubtleCrypto available in every modern browser */
+    async function sha256(str){
+      const utf8 = new TextEncoder().encode(str);
+      const buf  = await crypto.subtle.digest('SHA-256', utf8);
+      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('').toUpperCase();
+    }
+
+    (async()=>{
+      const key = json.cfg.hashKey, iv = json.cfg.hashIv;
+      const raw = 'HashKey='+key+
+        Object.keys(p).filter(k=>k!=='CheckMacValue').sort((a,b)=>a.localeCompare(b))
+          .map(k=>'&'+k+'='+p[k]).join('')+
+        '&HashIV='+iv;
+      const enc = encodeURIComponent(raw).toLowerCase()
+        .replace(/%2d/g,'-').replace(/%5f/g,'_').replace(/%2e/g,'.')
+        .replace(/%21/g,'!').replace(/%2a/g,'*')
+        .replace(/%28/g,'(').replace(/%29/g,')').replace(/%20/g,'+');
+      p.CheckMacValue = await sha256(enc);
+
+      /* print everything that will POST to ECPay */
+      console.table(p);
+
+      /* inject inputs */
+      const form = document.getElementById('pay');
+      Object.entries(p).forEach(([k,v])=>{
+        const inp = document.createElement('input');
+        inp.type='hidden'; inp.name=k; inp.value=v;
+        form.appendChild(inp);
+      });
+      /* auto-submit if you like: form.submit(); */
+    })();
+  </script>
+</body>
 </html>
