@@ -1,78 +1,90 @@
-/* ecpay.js  –  builds a hidden-input form and (optionally) auto-submits
- *
- * 1. Pull “p=ENCODED_STRING” from the page URL
- * 2. Decode => { cfg, amt, tno }  (must match what backend created)
- * 3. Create a <form> with all the required hidden inputs
- * 4. Insert the form into the DOM and wire “前往付款” button
- * 5. (Optional) auto-submit instantly
- */
+/* ecpay.js  – GitHub-Pages client that posts to ECPay
+ *  1. decode ?p=…  ({ cfg , amt , tno })
+ *  2. build a hidden-input form exactly as backend expects
+ *  3. wire the visible button  (id="go")  + optional auto-submit
+ *  4. console.table() all params for easy debugging                  */
 
-/* --- tiny helpers --- */
-const qs    = new URLSearchParams(location.search);
-const enc   = qs.get("p") || "";
-const $box  = document.getElementById("box");
-const $btn  = document.getElementById("go");
+(function () {
+  /* ---------- helpers --------------------------------------------------- */
+  const qs   = new URLSearchParams(location.search);
+  const enc  = qs.get('p') || '';
+  const $box = document.getElementById('box');   // where the form lives
+  const $btn = document.getElementById('go');    // the visible button
 
-/* bail out if params missing */
-if (!enc) {
-  $box.innerHTML = "<p style='color:#c00'>付款參數缺失，請重新下單</p>";
-  $btn.remove();
-  throw new Error("missing ?p param");
-}
+  if (!enc) {
+    $box.innerHTML = '<p style="color:#c00">付款參數缺失，請重新下單</p>';
+    $btn.remove();
+    return;
+  }
 
-let decoded;
-try {
-  decoded = JSON.parse(
-    decodeURIComponent(atob(enc))
-  );                     // { cfg:{…}, amt:'299', tno:'…' }
-} catch (e) {
-  console.error("[ecpay.js] decode failed:", e);
-  $box.innerHTML = "<p style='color:#c00'>付款參數無法解析</p>";
-  $btn.remove();
-  throw e;
-}
+  /* safe-decode ----------------------------------------------------------- */
+  let decoded;
+  try {
+    decoded = JSON.parse(atob(decodeURIComponent(enc)));
+  } catch (e) {
+    console.error('[ecpay.js] decode error', e);
+    $box.innerHTML = '<p style="color:#c00">付款參數無法解析</p>';
+    $btn.remove();
+    return;
+  }
 
-const { cfg, amt, tno } = decoded;
+  const { cfg, amt, tno } = decoded;
 
-/* --- build the parameter object exactly as backend did --- */
-const p = {
-  MerchantID:        cfg.merchantId,
-  MerchantTradeNo:   tno,
-  MerchantTradeDate: new Date().toISOString().slice(0, 19).replace("T", " "),
-  PaymentType:       "aio",
-  TotalAmount:       amt,
-  TradeDesc:         "商品訂單",
-  ItemName:          "課程",
-  ReturnURL:         "https://www.sooooz.com/_functions/updateECPayTransaction",
-  ClientBackURL:     "https://www.sooooz.com/",
-  OrderResultURL:    "https://www.sooooz.com/_functions/paymentResult",
-  ChoosePayment:     "ALL",
-  EncryptType:       "1",
-  CustomField1:      cfg.wixTransactionId,
-  CustomField2:      cfg.orderId,
-  /* CheckMacValue already calculated server-side → include it: */
-  CheckMacValue:     cfg.mac // ← you passed this in cfg when you built the link
-};
+  /* taipei-time “YYYY/MM/DD hh:mm:ss” ------------------------------------ */
+  const taipeiTime = () => {
+    const t = new Date(Date.now() + 8 * 60 * 60 * 1000);   // force +08:00
+    const z = n => String(n).padStart(2, '0');
+    return (
+      `${t.getUTCFullYear()}/${z(t.getUTCMonth() + 1)}/${z(t.getUTCDate())} ` +
+      `${z(t.getUTCHours())}:${z(t.getUTCMinutes())}:${z(t.getUTCSeconds())}`
+    );
+  };
 
-/* --- create the form & append hidden inputs --- */
-const form = document.createElement("form");
-form.method = "post";
-form.action = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5";
-form.id     = "pay";
+  /* build parameter object (CheckMacValue already computed server-side!) */
+  const p = {
+    MerchantID       : cfg.merchantId,
+    MerchantTradeNo  : tno,
+    MerchantTradeDate: taipeiTime(),
+    PaymentType      : 'aio',
+    TotalAmount      : amt,
+    TradeDesc        : '商品訂單',
+    ItemName         : '課程',
+    ReturnURL        : 'https://www.sooooz.com/_functions/updateECPayTransaction',
+    ClientBackURL    : 'https://www.sooooz.com/',
+    OrderResultURL   : 'https://www.sooooz.com/_functions/paymentResult',
+    ChoosePayment    : 'ALL',
+    EncryptType      : '1',
+    CustomField1     : cfg.wixTransactionId,
+    CustomField2     : cfg.orderId,
+    CheckMacValue    : cfg.mac                    // ← provided by backend
+  };
 
-Object.entries(p).forEach(([k, v]) => {
-  const inp = document.createElement("input");
-  inp.type  = "hidden";
-  inp.name  = k;
-  inp.value = v;
-  form.appendChild(inp);
-});
+  /* debug – see everything that will be POSTed --------------------------- */
+  console.table(p);
 
-$box.appendChild(form);
+  /* make form ------------------------------------------------------------- */
+  const form = document.createElement('form');
+  form.method = 'post';
+  form.action =
+    p.MerchantID === '3002607'
+      ? 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5'
+      : 'https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5';
+  form.id = 'pay';
 
-/* --- enable the visible button --- */
-$btn.hidden = false;
-$btn.addEventListener("click", () => form.submit());
+  Object.entries(p).forEach(([k, v]) => {
+    const inp = document.createElement('input');
+    inp.type  = 'hidden';
+    inp.name  = k;
+    inp.value = v;
+    form.appendChild(inp);
+  });
 
-/* (Optional) auto-submit instantly.  Comment out if you prefer manual click */
-form.submit();
+  $box.appendChild(form);
+
+  /* wire visible button --------------------------------------------------- */
+  $btn.hidden = false;
+  $btn.addEventListener('click', () => form.submit());
+
+  /* auto-submit – comment this out if you prefer manual click */
+  form.submit();
+})();
