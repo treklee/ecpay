@@ -1,1 +1,58 @@
-css\n:root{--brand:#44bda0;--bg:#f7f9fa;--radius:18px;--shadow:0 6px 24px rgba(0,0,0,.08);}body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg);font-family:\"Noto Sans\",\"PingFang TC\",sans-serif} .card{width:92%;max-width:360px;background:#fff;padding:36px 32px;border-radius:var(--radius);box-shadow:var(--shadow);text-align:center} h1{margin:0 0 16px;font-size:1.3rem;font-weight:700;color:#222} p{margin:0 0 20px;font-size:.98rem;color:#555} button{display:block;width:100%;padding:12px 0;font-size:1rem;background:var(--brand);color:#fff;border:0;border-radius:8px;cursor:pointer} button:hover{opacity:.92}\n
+/* minimalist look; tweak any values you like */
+:root {
+  --brand: #44bda0;
+  --bg:    #f7f9fa;
+  --radius: 20px;
+  --shadow: 0 6px 24px rgba(0, 0, 0, 0.08);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  font-family: "Noto Sans", "PingFang TC", sans-serif;
+}
+
+.card {
+  max-width: 360px;
+  width: 92%;
+  background: #fff;
+  padding: 36px 32px;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  text-align: center;
+}
+
+h1 {
+  margin: 0 0 24px;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+p {
+  margin: 0 0 26px;
+  font-size: 1rem;
+  color: #555;
+}
+
+button {
+  all: unset;
+  display: block;
+  width: 100%;
+  padding: 14px 0;
+  margin: 0;
+  font-size: 1rem;
+  background: var(--brand);
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.15s ease;
+}
+
+button:hover { transform: scale(0.98); }
