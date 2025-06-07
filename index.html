@@ -1,72 +1,63 @@
 <!doctype html>
 <html lang="zh-Hant">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>前往綠界付款</title>
-  <link rel="stylesheet" href="redirect.css" />
+  <link rel="stylesheet" href="redirect.css">
 </head>
-
 <body>
-  <!-- the form is inserted here by the script -->
-  <form id="pay" class="card" method="post">
+  <form id="pay" class="card" method="post"
+        action="https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5">
     <h1>前往綠界金流付款頁面</h1>
     <p>請點按鈕完成付款</p>
     <button type="submit">前往付款</button>
   </form>
 
-  <script type="module">
-    /* ------------------------------------------------------------ *
-     * 1) 拆出 ?p=... 參數並解碼                                        *
-     * ------------------------------------------------------------ */
-    const enc = new URLSearchParams(location.search).get('p') ?? '';
-    if (!enc) { alert('缺少 ?p= 參數'); throw new Error('no ?p'); }
+  <script>
+    /* -------- decode the ?p=... query string -------- */
+    const qp   = new URLSearchParams(location.search);
+    const enc  = qp.get('p') || '';
+    const json = JSON.parse(atob(decodeURIComponent(enc)));
+    console.log('[GitHub page] decoded payload:', json);
 
-    const { cfg, amt, tno } = JSON.parse(atob(decodeURIComponent(enc)));
+    /* helper ─ yyyy/MM/dd HH:mm:ss */
+    const fmtDate = d => {
+      const z = n => String(n).padStart(2,'0');
+      return d.getFullYear()+'/'+z(d.getMonth()+1)+'/'+z(d.getDate())+' '+
+             z(d.getHours())+':'+z(d.getMinutes())+':'+z(d.getSeconds());
+    };
 
-    /* ------------------------------------------------------------ *
-     * 2) 建立所有隱藏欄位                                             *
-     * ------------------------------------------------------------ */
-    const params = {
-      MerchantID       : cfg.merchantId,
-      MerchantTradeNo  : tno,
-      MerchantTradeDate: new Date().toISOString().slice(0,19).replace('T',' '),
+    /* build parameter object */
+    const p = {
+      MerchantID       : json.cfg.merchantId,
+      MerchantTradeNo  : json.tno,
+      MerchantTradeDate: fmtDate(new Date()),          // 👈 correct format
       PaymentType      : 'aio',
-      TotalAmount      : amt,
-      TradeDesc        : '課程訂單',
+      TotalAmount      : json.amt,
+      TradeDesc        : '商品訂單',
       ItemName         : '課程',
       ReturnURL        : 'https://www.sooooz.com/_functions/updateECPayTransaction',
       ClientBackURL    : 'https://www.sooooz.com/',
       OrderResultURL   : 'https://www.sooooz.com/_functions/paymentResult',
       ChoosePayment    : 'ALL',
       EncryptType      : '1',
-      CustomField1     : cfg.wixTransactionId,
-      CustomField2     : cfg.orderId,
-      CheckMacValue    : cfg.mac                 // ← 由後端計算好直接帶進來
+      CustomField1     : json.cfg.wixTransactionId,
+      CustomField2     : json.cfg.orderId,
+      CheckMacValue    : json.cfg.mac                      // MAC came from server
     };
 
-    console.table(params);                       // ← 方便你在 DevTools 檢查
-
-    /* ------------------------------------------------------------ *
-     * 3) 填進 <form> 並設定 action                                    *
-     * ------------------------------------------------------------ */
-    const form  = document.getElementById('pay');
-    form.action = (cfg.merchantId === '3002607')   // staging or prod
-      ? 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5'
-      : 'https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5';
-
-    for (const [k,v] of Object.entries(params)){
-      const inp  = document.createElement('input');
-      inp.type   = 'hidden';
-      inp.name   = k;
-      inp.value  = v;
+    /* inject hidden inputs & submit */
+    const form = document.getElementById('pay');
+    Object.entries(p).forEach(([k,v])=>{
+      const inp   = document.createElement('input');
+      inp.type    = 'hidden';
+      inp.name    = k;
+      inp.value   = v;
       form.appendChild(inp);
-    }
-
-    /* ------------------------------------------------------------ *
-     * 4) 自動送出 (想手動就把這行註解掉)                              *
-     * ------------------------------------------------------------ */
-    form.submit();
+    });
+    console.table(p);         // handy browser-side debug
+    form.submit();            // auto-submit; comment out if you want manual
   </script>
 </body>
 </html>
