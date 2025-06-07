@@ -7,57 +7,95 @@
   <link rel="stylesheet" href="redirect.css">
 </head>
 <body>
-  <form id="pay" class="card" method="post"
-        action="https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5">
+  <div class="card">
     <h1>前往綠界金流付款頁面</h1>
-    <p>請點按鈕完成付款</p>
-    <button type="submit">前往付款</button>
-  </form>
+    <p>系統自動導向付款頁面，如無反應請點「前往付款」</p>
+    <button id="go" hidden>前往付款</button>
+    <div id="box"></div>
+  </div>
 
   <script>
-    /* -------- decode the ?p=... query string -------- */
-    const qp   = new URLSearchParams(location.search);
-    const enc  = qp.get('p') || '';
-    const json = JSON.parse(atob(decodeURIComponent(enc)));
-    console.log('[GitHub page] decoded payload:', json);
+    /* small helpers ---------------------------------------------------- */
+    const qs  = new URLSearchParams(location.search);
+    const enc = qs.get('p') || '';
+    const pad = n => String(n).padStart(2,'0');
+    const fmt = d => d.getFullYear() + '/'
+                   + pad(d.getMonth()+1) + '/'
+                   + pad(d.getDate())   + ' '
+                   + pad(d.getHours())  + ':'
+                   + pad(d.getMinutes())+ ':'
+                   + pad(d.getSeconds());
 
-    /* helper ─ yyyy/MM/dd HH:mm:ss */
-    const fmtDate = d => {
-      const z = n => String(n).padStart(2,'0');
-      return d.getFullYear()+'/'+z(d.getMonth()+1)+'/'+z(d.getDate())+' '+
-             z(d.getHours())+':'+z(d.getMinutes())+':'+z(d.getSeconds());
-    };
+    /* bail-out if ?p= missing ----------------------------------------- */
+    if (!enc) {
+      document.body.innerHTML = '<p style="color:#c00">付款參數缺失，請重新下單</p>';
+      throw new Error('missing ?p');
+    }
 
-    /* build parameter object */
+    /* decode Wix payload ---------------------------------------------- */
+    const data = JSON.parse(atob(decodeURIComponent(enc)));
+    console.log('[GitHub] decoded payload →', data);
+
     const p = {
-      MerchantID       : json.cfg.merchantId,
-      MerchantTradeNo  : json.tno,
-      MerchantTradeDate: fmtDate(new Date()),          // 👈 correct format
+      MerchantID       : data.cfg.merchantId,
+      MerchantTradeNo  : data.tno,
+      MerchantTradeDate: fmt(new Date()),
       PaymentType      : 'aio',
-      TotalAmount      : json.amt,
-      TradeDesc        : '商品訂單',
+      TotalAmount      : data.amt,
+      TradeDesc        : '課程訂單',
       ItemName         : '課程',
       ReturnURL        : 'https://www.sooooz.com/_functions/updateECPayTransaction',
       ClientBackURL    : 'https://www.sooooz.com/',
       OrderResultURL   : 'https://www.sooooz.com/_functions/paymentResult',
       ChoosePayment    : 'ALL',
       EncryptType      : '1',
-      CustomField1     : json.cfg.wixTransactionId,
-      CustomField2     : json.cfg.orderId,
-      CheckMacValue    : json.cfg.mac                      // MAC came from server
+      CustomField1     : data.cfg.wixTransactionId,
+      CustomField2     : data.cfg.orderId
     };
 
-    /* inject hidden inputs & submit */
-    const form = document.getElementById('pay');
-    Object.entries(p).forEach(([k,v])=>{
-      const inp   = document.createElement('input');
-      inp.type    = 'hidden';
-      inp.name    = k;
-      inp.value   = v;
-      form.appendChild(inp);
-    });
-    console.table(p);         // handy browser-side debug
-    form.submit();            // auto-submit; comment out if you want manual
+    /* live SHA-256 implementation (browser-side) ----------------------- */
+    async function sha256(t){
+      const buf = await crypto.subtle.digest('SHA-256',
+                     new TextEncoder().encode(t));
+      return [...new Uint8Array(buf)]
+             .map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
+    }
+
+    /* ECPay MAC algorithm (same as server) ----------------------------- */
+    async function makeMac(obj, key, iv){
+      const raw = 'HashKey='+key+
+        Object.keys(obj).sort().map(k=>'&'+k+'='+obj[k]).join('')+
+        '&HashIV='+iv;
+      const enc = encodeURIComponent(raw).toLowerCase()
+        .replace(/%2d/g,'-').replace(/%5f/g,'_').replace(/%2e/g,'.')
+        .replace(/%21/g,'!').replace(/%2a/g,'*')
+        .replace(/%28/g,'(').replace(/%29/g,')').replace(/%20/g,'+');
+      return sha256(enc);
+    }
+
+    (async()=>{
+      p.CheckMacValue = await makeMac(p, data.cfg.hashKey, data.cfg.hashIv);
+      console.table(p);                         // DEBUG – shows final POST body
+
+      /* build <form> & auto-submit ------------------------------------- */
+      const form = document.createElement('form');
+      form.method = 'post';
+      form.action = 'https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5';
+      Object.entries(p).forEach(([k,v])=>{
+        const inp   = document.createElement('input');
+        inp.type    = 'hidden';
+        inp.name    = k;
+        inp.value   = v;
+        form.appendChild(inp);
+      });
+      document.getElementById('box').appendChild(form);
+
+      const btn = document.getElementById('go');
+      btn.hidden = false;
+      btn.onclick = () => form.submit();
+
+      form.submit();   // comment this line if you prefer manual click
+    })();
   </script>
 </body>
 </html>
