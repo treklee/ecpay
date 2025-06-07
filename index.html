@@ -1,89 +1,36 @@
-<script>
-/* 1️⃣  decode the ?p=… payload ------------------------------------------------ */
-const qp  = new URLSearchParams(location.search);
-const enc = qp.get('p') || '';
-const json = JSON.parse(atob(decodeURIComponent(enc)));
+<script type="module">
+  /* 1 – decode ?p=… ---------------------------------------------------- */
+  const enc = new URLSearchParams(location.search).get('p') ?? '';
+  if (!enc) { document.body.textContent = '缺少參數'; throw new Error('no p'); }
+  const { cfg, amt, tno } = JSON.parse(atob(decodeURIComponent(enc)));
 
-console.log('[GitHub page] decoded payload', json);
+  /* 2 – build the form -------------------------------------------------- */
+  const p = {
+    MerchantID       : cfg.merchantId,
+    MerchantTradeNo  : tno,
+    MerchantTradeDate: new Date().toISOString().slice(0,19).replace('T',' '),
+    PaymentType      : 'aio',
+    TotalAmount      : amt,
+    TradeDesc        : '課程訂單',
+    ItemName         : '課程',
+    ReturnURL        : 'https://www.sooooz.com/_functions/updateECPayTransaction',
+    ClientBackURL    : 'https://www.sooooz.com/',
+    OrderResultURL   : 'https://www.sooooz.com/_functions/paymentResult',
+    ChoosePayment    : 'ALL',
+    EncryptType      : '1',
+    CustomField1     : cfg.wixTransactionId,
+    CustomField2     : cfg.orderId,
+    CheckMacValue    : cfg.mac                  /* 👈 already computed */
+  };
 
-/* 2️⃣  helpers ---------------------------------------------------------------- */
-/* yyyy/MM/dd HH:mm:ss — always UTC+8 */
-function taipeiTime() {
-  const t = new Date(Date.now() + 8 * 60 * 60 * 1000);      // force +08:00
-  const z = n => String(n).padStart(2, '0');
-  return (
-    `${t.getUTCFullYear()}/${z(t.getUTCMonth() + 1)}/${z(t.getUTCDate())} ` +
-    `${z(t.getUTCHours())}:${z(t.getUTCMinutes())}:${z(t.getUTCSeconds())}`
-  );
-}
-
-/* very small SHA-256 → hex using built-in SubtleCrypto */
-async function sha256(str) {
-  const buf = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(str)
-  );
-  return Array.from(new Uint8Array(buf))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('')
-    .toUpperCase();
-}
-
-/* 3️⃣  build the ECPay parameter object ------------------------------------- */
-const p = {
-  MerchantID        : json.cfg.merchantId,
-  MerchantTradeNo   : json.tno,
-  MerchantTradeDate : taipeiTime(),          // <-- fixed format, fixed TZ
-  PaymentType       : 'aio',
-  TotalAmount       : json.amt,
-  TradeDesc         : '商品訂單',
-  ItemName          : '課程',
-  ReturnURL         : 'https://www.sooooz.com/_functions/updateECPayTransaction',
-  ClientBackURL     : 'https://www.sooooz.com/',
-  OrderResultURL    : 'https://www.sooooz.com/_functions/paymentResult',
-  ChoosePayment     : 'ALL',
-  EncryptType       : '1',
-  CustomField1      : json.cfg.wixTransactionId,
-  CustomField2      : json.cfg.orderId,
-  CheckMacValue     : ''                     // ← filled in a second
-};
-
-/* 4️⃣  compute CheckMacValue -------------------------------------------------- */
-(async () => {
-  const { hashKey: K, hashIv: IV } = json.cfg;
-  const raw =
-    'HashKey=' + K +
-    Object.keys(p).filter(k => k !== 'CheckMacValue').sort().map(k => '&' + k + '=' + p[k]).join('') +
-    '&HashIV=' + IV;
-
-  const enc = encodeURIComponent(raw).toLowerCase()
-    .replace(/%2d/g, '-').replace(/%5f/g, '_').replace(/%2e/g, '.')
-    .replace(/%21/g, '!').replace(/%2a/g, '*')
-    .replace(/%28/g, '(').replace(/%29/g, ')').replace(/%20/g, '+');
-
-  p.CheckMacValue = await sha256(enc);
-
-  /* 5️⃣  dump params (for your debugging) ----------------------------------- */
+  /* 3 – dump to console for debugging */
   console.table(p);
 
-  /* 6️⃣  inject hidden inputs & POST to the correct host -------------------- */
+  /* 4 – inject & auto-submit */
   const form = document.getElementById('pay');
-
-  /* pick stage or prod Cashier by merchantId */
-  form.action =
-    p.MerchantID === '3002607'
-      ? 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5'
-      : 'https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5';
-
-  Object.entries(p).forEach(([k, v]) => {
+  for (const [k,v] of Object.entries(p)){
     const inp = document.createElement('input');
-    inp.type = 'hidden';
-    inp.name = k;
-    inp.value = v;
-    form.appendChild(inp);
-  });
-
-  /* auto-submit; remove if you want manual click only */
-  form.submit();
-})();
+    inp.type='hidden'; inp.name=k; inp.value=v; form.appendChild(inp);
+  }
+  form.submit();                                 // auto-submit
 </script>
