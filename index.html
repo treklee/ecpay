@@ -1,36 +1,72 @@
-<script type="module">
-  /* 1 – decode ?p=… ---------------------------------------------------- */
-  const enc = new URLSearchParams(location.search).get('p') ?? '';
-  if (!enc) { document.body.textContent = '缺少參數'; throw new Error('no p'); }
-  const { cfg, amt, tno } = JSON.parse(atob(decodeURIComponent(enc)));
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>前往綠界付款</title>
+  <link rel="stylesheet" href="redirect.css" />
+</head>
 
-  /* 2 – build the form -------------------------------------------------- */
-  const p = {
-    MerchantID       : cfg.merchantId,
-    MerchantTradeNo  : tno,
-    MerchantTradeDate: new Date().toISOString().slice(0,19).replace('T',' '),
-    PaymentType      : 'aio',
-    TotalAmount      : amt,
-    TradeDesc        : '課程訂單',
-    ItemName         : '課程',
-    ReturnURL        : 'https://www.sooooz.com/_functions/updateECPayTransaction',
-    ClientBackURL    : 'https://www.sooooz.com/',
-    OrderResultURL   : 'https://www.sooooz.com/_functions/paymentResult',
-    ChoosePayment    : 'ALL',
-    EncryptType      : '1',
-    CustomField1     : cfg.wixTransactionId,
-    CustomField2     : cfg.orderId,
-    CheckMacValue    : cfg.mac                  /* 👈 already computed */
-  };
+<body>
+  <!-- the form is inserted here by the script -->
+  <form id="pay" class="card" method="post">
+    <h1>前往綠界金流付款頁面</h1>
+    <p>請點按鈕完成付款</p>
+    <button type="submit">前往付款</button>
+  </form>
 
-  /* 3 – dump to console for debugging */
-  console.table(p);
+  <script type="module">
+    /* ------------------------------------------------------------ *
+     * 1) 拆出 ?p=... 參數並解碼                                        *
+     * ------------------------------------------------------------ */
+    const enc = new URLSearchParams(location.search).get('p') ?? '';
+    if (!enc) { alert('缺少 ?p= 參數'); throw new Error('no ?p'); }
 
-  /* 4 – inject & auto-submit */
-  const form = document.getElementById('pay');
-  for (const [k,v] of Object.entries(p)){
-    const inp = document.createElement('input');
-    inp.type='hidden'; inp.name=k; inp.value=v; form.appendChild(inp);
-  }
-  form.submit();                                 // auto-submit
-</script>
+    const { cfg, amt, tno } = JSON.parse(atob(decodeURIComponent(enc)));
+
+    /* ------------------------------------------------------------ *
+     * 2) 建立所有隱藏欄位                                             *
+     * ------------------------------------------------------------ */
+    const params = {
+      MerchantID       : cfg.merchantId,
+      MerchantTradeNo  : tno,
+      MerchantTradeDate: new Date().toISOString().slice(0,19).replace('T',' '),
+      PaymentType      : 'aio',
+      TotalAmount      : amt,
+      TradeDesc        : '課程訂單',
+      ItemName         : '課程',
+      ReturnURL        : 'https://www.sooooz.com/_functions/updateECPayTransaction',
+      ClientBackURL    : 'https://www.sooooz.com/',
+      OrderResultURL   : 'https://www.sooooz.com/_functions/paymentResult',
+      ChoosePayment    : 'ALL',
+      EncryptType      : '1',
+      CustomField1     : cfg.wixTransactionId,
+      CustomField2     : cfg.orderId,
+      CheckMacValue    : cfg.mac                 // ← 由後端計算好直接帶進來
+    };
+
+    console.table(params);                       // ← 方便你在 DevTools 檢查
+
+    /* ------------------------------------------------------------ *
+     * 3) 填進 <form> 並設定 action                                    *
+     * ------------------------------------------------------------ */
+    const form  = document.getElementById('pay');
+    form.action = (cfg.merchantId === '3002607')   // staging or prod
+      ? 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5'
+      : 'https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5';
+
+    for (const [k,v] of Object.entries(params)){
+      const inp  = document.createElement('input');
+      inp.type   = 'hidden';
+      inp.name   = k;
+      inp.value  = v;
+      form.appendChild(inp);
+    }
+
+    /* ------------------------------------------------------------ *
+     * 4) 自動送出 (想手動就把這行註解掉)                              *
+     * ------------------------------------------------------------ */
+    form.submit();
+  </script>
+</body>
+</html>
